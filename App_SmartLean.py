@@ -586,12 +586,13 @@ elif menu == "👁️ 6. Visão Computacional (Defeitos em Peças)":
     exibir_rodape_educacional()
 
 # ====================================================================
-# MÓDULO 7: IA GENERATIVA (ASSISTENTE POP & NR-12)
+# MÓDULO 7: IA GENERATIVA & RAG DINÂMICO (POP & NR-12)
 # ====================================================================
 elif menu == "💬 7. IA Generativa (Assistente POP & NR-12)":
     st.title("💬 Assistente Virtual Especialista em Chão de Fábrica & POP")
-    st.caption("Consulta Automatizada a Procedimentos Operacionais Padrão e Manuais de Máquinas Industriais")
+    st.caption("Consulta Automatizada via RAG (Retrieval-Augmented Generation) com Upload de Manuais Técnicos")
     
+    # 1. Configurações da Conexão com a Nuvem
     with st.expander("⚙️ Parâmetros de Integração Azure OpenAI"):
         c1, c2 = st.columns(2)
         with c1:
@@ -600,6 +601,23 @@ elif menu == "💬 7. IA Generativa (Assistente POP & NR-12)":
             endpoint_k = st.text_input("Endpoint", value="https://marcelomaffeis-05082026-resource.services.ai.azure.com/openai/v1")
         dep_model = st.text_input("Nome do Deployment", value="gpt-4.1-mini")
 
+    # 2. Upload Dinâmico de Base de Conhecimento (POP / Manual)
+    st.markdown("##### 📚 Base de Conhecimento Técnico:")
+    col_up1, col_up2 = st.columns([2.5, 1])
+    with col_up1:
+        arquivo_manual = st.file_uploader(
+            "Envie o POP da fábrica, Manual de Máquina ou Instrução NR-12 (.txt ou .md):",
+            type=["txt", "md"],
+            help="Se nenhum arquivo for enviado, a IA utilizará o POP-042 padrão embutido."
+        )
+    with col_up2:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("🔄 Limpar Histórico do Chat", use_container_width=True):
+            if "mensagens_lean" in st.session_state:
+                del st.session_state["mensagens_lean"]
+            st.rerun()
+
+    # Manual padrão de contingência embutido
     manual_fabril_padrao = """
     MANUAL DE OPERAÇÃO E SEGURANÇA INDUSTRIAL (NR-12 / POP-042):
     1. ALARME 1024 (Sobrecarga no Servo-Motor do Eixo Z):
@@ -611,24 +629,42 @@ elif menu == "💬 7. IA Generativa (Assistente POP & NR-12)":
        - Óleo de corte sintético deve operar entre 20°C e 45°C. Se passar de 60°C, pausar usinagem para evitar deformação térmica da peça.
     """
 
-    if "mensagens_lean" not in st.session_state:
-        st.session_state.mensagens_lean = [
-            {
-                "role": "system",
-                "content": f"""Você é o Engenheiro Especialista em Manufatura Enxuta e Segurança NR-12 do Chão de Fábrica.
-                Responda dúvidas de operadores, técnicos de processos e manutenção com base estrita no procedimento padrão:
-                
-                --- PROCEDIMENTO OPERACIONAL PADRÃO (POP) ---
-                {manual_fabril_padrao}
-                """
-            }
-        ]
+    # Leitura dinâmica do arquivo enviado
+    if arquivo_manual is not None:
+        try:
+            conteudo_manual = arquivo_manual.read().decode("utf-8")
+            nome_manual_ativo = f"📁 Personalizado ({arquivo_manual.name})"
+        except Exception:
+            conteudo_manual = manual_fabril_padrao
+            nome_manual_ativo = "📄 POP-042 (Padrão de Segurança)"
+    else:
+        conteudo_manual = manual_fabril_padrao
+        nome_manual_ativo = "📄 POP-042 / NR-12 (Padrão Embutido)"
 
+    st.info(f"**Manual Técnico Ativo no RAG:** `{nome_manual_ativo}`")
+
+    # Inicialização / Atualização da Memória do Chat
+    instrucao_sistema_lean = f"""Você é o Engenheiro Especialista em Manufatura Enxuta (Lean Manufacturing) e Segurança NR-12 do Chão de Fábrica.
+    Responda dúvidas de operadores, técnicos de processos e manutenção com base estritamente no manual técnico e POP fornecido abaixo.
+    Se a informação não estiver descrita no documento, informe com clareza técnica que o procedimento deve ser escalado ao supervisor ou à engenharia de processos.
+
+    --- BASE DE CONHECIMENTO TÉCNICO (MANUAL / POP) ---
+    {conteudo_manual}
+    """
+
+    if "mensagens_lean" not in st.session_state:
+        st.session_state.mensagens_lean = [{"role": "system", "content": instrucao_sistema_lean}]
+    else:
+        # Atualiza a regra do sistema caso um novo arquivo tenha sido carregado
+        st.session_state.mensagens_lean[0] = {"role": "system", "content": instrucao_sistema_lean}
+
+    # Renderização das mensagens anteriores
     for msg in st.session_state.mensagens_lean:
         if msg["role"] != "system":
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
+    # Barra de Digitação da Dúvida
     duvida_fabril = st.chat_input("Digite sua dúvida (Ex: O torno CNC deu alarme 1024 no eixo Z, o que devo fazer?)")
     if duvida_fabril:
         if not api_k:
@@ -639,7 +675,7 @@ elif menu == "💬 7. IA Generativa (Assistente POP & NR-12)":
                 st.markdown(duvida_fabril)
                 
             with st.chat_message("assistant"):
-                with st.spinner("Consultando POP e Manuais Técnicos de Fábrica..."):
+                with st.spinner("Consultando base de conhecimento técnico do chão de fábrica..."):
                     try:
                         client_lean = OpenAI(base_url=endpoint_k, api_key=api_k)
                         resp_lean = client_lean.chat.completions.create(
