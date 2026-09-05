@@ -1,0 +1,2 @@
+# smartlean-ia-senai
+Lean
